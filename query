@@ -1,0 +1,428 @@
+CREATE DATABASE Swiggy
+
+USE Swiggy
+
+SELECT * FROM Swiggy_Data
+
+
+
+-- (1) Data Validation and Cleaning using null check
+
+SELECT 
+SUM (CASE WHEN State IS NULL THEN 1 ELSE 0 END) AS Null_state,
+SUM (CASE WHEN City IS NULL THEN 1 ELSE 0 END)AS Null_city,
+SUM (CASE WHEN Order_Date IS NULL THEN 1 ELSE 0 END) AS Null_order_date,
+SUM (CASE WHEN Restaurant_Name IS NULL THEN 1 ELSE 0 END) AS Null_restaurant_name,
+SUM (CASE WHEN Location  IS NULL THEN 1 ELSE 0 END ) AS Null_location,
+SUM (CASE WHEN Category IS NULL THEN 1 ELSE 0 END) AS Null_category,
+SUM (CASE WHEN Dish_Name IS NULL THEN 1 ELSE 0 END) AS Null_dish_name,
+SUM (CASE WHEN Price_INR IS NULL THEN 1 ELSE 0 END )AS Null_price_inr,
+SUM (CASE WHEN Rating IS NULL THEN 1 ELSE 0 END) AS Null_rating,
+SUM (CASE WHEN Rating_Count IS NULL THEN 1 ELSE 0 END ) AS Null_rating_count
+FROM Swiggy_Data;
+
+
+--  check empty String >> cell blank 
+
+SELECT COUNT(*) AS blank_cell
+FROM Swiggy_Data
+WHERE 
+State = '' OR City = '' OR Order_Date='' OR Location = '' OR Category = '' OR Dish_Name = '' OR Price_INR =''  OR Rating = '' OR  Rating_Count = ''
+   -------   It has 79080 blank cells
+
+-- Duplicate detection
+
+SELECT 
+State, City, Order_Date, Restaurant_Name, Location, Category, Dish_Name, Price_INR, Rating, Rating_Count, COUNT(*) AS Count_duplicate
+FROM Swiggy_Data
+GROUP BY 
+State, City, Order_Date, Restaurant_Name, Location, Category, Dish_Name, Price_INR, Rating, Rating_Count
+HAVING COUNT(*)>1;
+
+
+--  Remove Duplicate
+
+WITH CTE AS ( 
+SELECT *, ROW_NUMBER() OVER (PARTITION BY State, City, Order_Date, Restaurant_Name, Location, Category, Dish_Name, Price_INR, Rating, Rating_Count
+ORDER BY (SELECT NULL)
+) AS NEW_DATA
+FROM Swiggy_Data
+)
+DELETE FROM CTE
+WHERE NEW_DATA>1
+
+
+----- (2) Data Transformation
+
+
+DROP TABLE Date_Table;
+
+-- creating table
+SELECT * FROM date_table;
+
+CREATE TABLE date_table
+(
+    date_id INT IDENTITY(1,1) PRIMARY KEY,
+    Full_Date DATE,
+    Year INT,
+    Month INT,
+    Month_Name VARCHAR(20),
+    Quarter INT,
+    Day INT,
+    Week INT
+);
+
+
+SELECT * FROM location_table;
+
+CREATE TABLE location_table(
+location_id INT IDENTITY(1,1) PRIMARY KEY,
+State VARCHAR(100),
+City VARCHAR(100),
+location VARCHAR(200)
+)
+
+
+SELECT * FROM restaurant_table;
+
+CREATE TABLE restaurant_table(
+restaurant_id INT IDENTITY(1,1) PRIMARY KEY,
+restaurant_name VARCHAR(200)
+)
+
+SELECT * FROM category_table;
+
+CREATE TABLE category_table(
+category_id INT IDENTITY(1,1) PRIMARY KEY,
+category VARCHAR(200)
+)
+
+
+SELECT * FROM dish_table;
+
+CREATE TABLE dish_table(
+dish_id INT IDENTITY(1,1) PRIMARY KEY,
+dish_name VARCHAR(200)
+)
+
+DROP TABLE Swiggy_orders
+
+
+CREATE TABLE Swiggy_orders(
+order_id INT IDENTITY(1,1) PRIMARY KEY,
+date_id INT,
+Price_INR DECIMAL(10,2),
+Rating DECIMAL(4,2),
+Rating_count INT,
+location_id INT,
+restaurant_id INT,
+category_id INT,
+dish_id INT,
+FOREIGN KEY (date_id) REFERENCES date_table(date_id),
+FOREIGN KEY (location_id) REFERENCES location_table(location_id),
+FOREIGN KEY (restaurant_id) REFERENCES restaurant_table(restaurant_id),
+FOREIGN KEY (category_id) REFERENCES category_table(category_id),
+FOREIGN KEY (dish_id) REFERENCES dish_table(dish_id)
+)
+
+
+
+----   INSERTING VALUE INTO TABLES
+
+-- INESERT INTO DATE TABLE
+
+INSERT INTO date_table (Full_Date, Year, Month, Month_Name, Quarter, Day, Week)
+SELECT DISTINCT
+Order_Date,
+Year(Order_Date),
+MONTH(Order_Date),
+DATENAME(MONTH, Order_Date),
+DATEPART (QUARTER, Order_Date),
+DAY(Order_Date),
+DATEPART(WEEK, Order_Date)
+FROM Swiggy_Data
+
+WHERE Order_Date IS NOT NULL;
+
+SELECT * FROM Date_Table;
+
+
+--LOCATION TABLE
+
+INSERT INTO location_table( State, City, location)
+SELECT DISTINCT
+State,
+City,
+location
+FROM swiggy_data
+
+--RESTAURANT TABLE
+
+INSERT INTO restaurant_table(Restaurant_name)
+SElECT DISTINCT
+Restaurant_name
+FROM swiggy_data
+
+--CATEGORY TABLE
+
+INSERT INTO category_table(category)
+SELECT DISTINCT
+category
+FROM Swiggy_data
+
+--DISH TABLE
+
+INSERT INTO dish_table(Dish_name)
+SELECT DISTINCT
+Dish_name
+FROM swiggy_data
+
+
+--- Swiggy orders
+
+INSERT INTO Swiggy_orders
+(
+    date_id,
+    Price_INR,
+    Rating,
+    Rating_count,
+    location_id,
+    restaurant_id,
+    category_id,
+    dish_id
+)
+SELECT
+    dd.date_id,
+    s.Price_INR,
+    s.Rating,
+    s.Rating_count,
+    dl.location_id,
+    dr.restaurant_id,
+    dc.category_id,
+    dsh.dish_id
+FROM Swiggy_Data s
+
+JOIN Date_table dd
+    ON dd.Full_Date = s.Order_Date
+
+JOIN location_table dl
+    ON dl.State = s.State
+    AND dl.City = s.City
+    AND dl.location = s.location
+
+JOIN restaurant_table dr
+    ON dr.restaurant_name = s.restaurant_name
+
+JOIN Category_table dc
+    ON dc.category = s.category
+
+JOIN Dish_table dsh
+    ON dsh.Dish_name = s.Dish_Name
+
+
+
+    SELECT * FROM Swiggy_Orders f
+
+    JOIN date_table d ON f.date_id = d.date_id
+    JOIN location_table l ON f.location_id = l.location_id
+    JOIN restaurant_table r ON f.restaurant_id = r.restaurant_id
+    JOIN category_table c ON f.category_id = c.category_id
+    JOIN dish_table di ON f.dish_id  = di.dish_id;
+
+
+    --------  KPI's
+
+    -- total orders
+
+    SELECT COUNT(*) AS total_orders
+    FROM Swiggy_orders
+
+
+   -- total revenue
+   SELECT FORMAT(SUM (CONVERT(FLOAT, Price_INR ))/1000000,'N2')+ ' M MILLION'
+   AS total_revenue
+   FROM Swiggy_orders
+
+   --- Avg dish price   N2 Means  after decimal place value
+   SELECT FORMAT (AVG (CONVERT(FLOAT, Price_INR )),'N2')+ 'INR' AS avg_dish_price
+   FROM Swiggy_orders
+
+
+   -- Date based analysis
+   --- Monthly order analysis
+
+   SELECT
+   d.Year,
+   d.MONTH,
+   d.Month_name,
+   COUNT(*) AS total_orders
+   FROM Swiggy_orders f
+   JOIN date_table d
+   ON f.date_id= d.date_id
+   GROUP BY 
+   d.Year,
+   d.Month,
+   d.Month_Name
+   ORDER BY COUNT(*) DESC
+
+   -- monthly order sales
+   SELECT
+   d.Year,
+   d.Month, 
+   d.Month_name,
+   FORMAT (SUM( CONVERT( FLOAT, Price_INR))/1000000, 'N2')+'M' AS total_revenue
+   FROM Swiggy_orders f
+   JOIN date_table d
+   ON f.date_id= d.date_id
+   GROUP BY 
+     d.Year, d.Month,d.Month_Name
+   ORDER BY SUM(Price_INR) DESC
+
+
+   -- Quarterly order analysis
+    SELECT
+   d.Year,
+   d.quarter,
+   COUNT(*) AS total_orders
+   FROM Swiggy_orders f
+   JOIN date_table d
+   ON f.date_id= d.date_id
+   GROUP BY 
+   d.Year,
+   d.quarter
+   ORDER BY COUNT(*) DESC
+
+   --yearly order analysis
+    SELECT
+   d.Year,
+   COUNT(*) AS total_orders
+   FROM Swiggy_orders f
+   JOIN date_table d
+   ON f.date_id= d.date_id
+   GROUP BY 
+   d.Year
+   ORDER BY COUNT(*) DESC
+
+
+-- week days analysis
+SELECT
+DATENAME(WEEKDAY, d.full_date) AS Day_name,
+COUNT(*) AS Total_orders
+FROM Swiggy_orders f
+JOIN date_table d
+ON f.date_id = d.date_id
+GROUP BY DATENAME(WEEKDAY, d.Full_date),DATEPART(WEEKDAY, d.Full_date)
+ORDER BY DATEPART(WEEKDAY, d.Full_date)
+
+
+-- Top 10 cities by order
+
+SELECT TOP 10
+l.City,
+COUNT(*) AS Total_orders
+FROM Swiggy_orders f
+JOIN location_table l
+ON l.location_id = f.Location_id
+GROUP BY l.city
+ORDER BY COUNT(*) DESC;
+
+
+-- Bottom 5 cities order
+
+SELECT TOP 5
+l.City,
+COUNT(*) AS Total_orders
+FROM Swiggy_orders f
+JOIN location_table l
+ON l.location_id = f.Location_id
+GROUP BY l.city
+ORDER BY COUNT(*) ASC;
+
+
+
+  ----Revenue contribution by state
+
+select
+l.state,
+format(sum(convert(float,f.price_inr))/1000000,'N2')+'M' AS TOTAL_REVENUE FROM SWIGGY_ORDERS F
+JOIN LOCATION_TABLE L
+ON L.LOCATION_ID= F.LOCATION_ID
+GROUP BY L.STATE
+ORDER BY SUM(F.PRICE_INR)DESC;
+
+
+---TOP 10 Restraurant by order
+
+SELECT TOP 10
+R.RESTAURANT_NAME,
+COUNT(*) AS TOTAL_ORDER_BY_RESTAURANT FROM SWIGGY_ORDERS F
+JOIN RESTAURANT_TABLE R
+ON R.RESTAURANT_ID=F.RESTAURANT_ID
+GROUP BY R .Restaurant_name
+ORDER BY COUNT(*) DESC
+
+
+--TOP CATEGORYIES BY ORDER
+SELECT
+C.CATEGORY,
+COUNT(*) AS TOTAL_ORDERS FROM SWIGGY_ORDERS F
+JOIN CATEGORY_TABLE C
+ON C.CATEGORY_ID=F.CATEGORY_ID
+GROUP BY C.CATEGORY
+ORDER BY COUNT(*) DESC;
+
+
+
+------MOST ORDERS DISHES
+
+SELECT TOP 10
+D.DISH_NAME,
+COUNT(*)AS TOTAL_ORDERS FROM SWIGGY_ORDERS F
+JOIN Dish_table D
+ON D.DISH_ID=F.DISH_ID
+GROUP BY D.DISH_NAME
+ORDER BY COUNT(*) DESC;
+
+--Category-wise Order and Average Rating Analysis
+SELECT 
+C.CATEGORY,
+COUNT(*) TOTAL_ORDER,
+AVG(F.RATING)AS ORDER_RATING
+FROM SWIGGY_ORDERS F
+JOIN CATEGORY_TABLE C
+ON F.CATEGORY_ID=C.CATEGORY_ID
+GROUP BY C.CATEGORY
+ORDER BY COUNT(*) DESC;
+
+
+---PRICE RANGE ORDER
+
+SELECT 
+CASE 
+WHEN  CONVERT (FLOAT,PRICE_INR)<100 THEN 'Under 100'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 100 AND 199 THEN '100-199'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 200 AND 299 THEN '200-299'
+WHEN CONVERT (FLOAT,PRICE_INR) BETWEEN 300 AND 399 THEN '300-399'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 400 AND 499 THEN '400-499'
+ELSE '500+'
+END AS PRICE_RANGE,
+COUNT(*) AS TOTAL_ORDERS
+FROM SWIGGY_ORDERS 
+GROUP BY
+CASE
+WHEN  CONVERT (FLOAT,PRICE_INR)<100 THEN 'Under 100'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 100 AND 199 THEN '100-199'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 200 AND 299 THEN '200-299'
+WHEN CONVERT (FLOAT,PRICE_INR) BETWEEN 300 AND 399 THEN '300-399'
+WHEN CONVERT(FLOAT,PRICE_INR)BETWEEN 400 AND 499 THEN '400-499'
+ELSE '500+'
+END
+ORDER BY TOTAL_ORDERS DESC; 
+
+
+
+
+
+
+
+  
